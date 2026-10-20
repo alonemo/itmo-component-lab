@@ -1,0 +1,36 @@
+name: Build, test and publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/alonemo/itmo-component-lab:312519
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build linux/amd64 image
+        run: |
+          docker build --platform linux/amd64 -t student-fs .
+          test "$(docker image inspect student-fs --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+      - name: Test container contract
+        run: node test.mjs student-fs
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag student-fs "$IMAGE"
+          docker push "$IMAGE"
+      - name: Pull and test published image
+        run: |
+          docker image rm "$IMAGE" student-fs
+          docker pull "$IMAGE"
+          node test.mjs "$IMAGE"
+          docker logout ghcr.io
